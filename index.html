@@ -4,153 +4,85 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Morse Trainer</title>
-
 <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
 <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
 <link rel="manifest" href="manifest.json">
-
 <meta name="theme-color" content="#1a1a1a">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="Morse">
-
 <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
-
 <style>
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  body {
-    background: #1a1a1a; color: #d0d0d0;
-    font-family: -apple-system, 'Courier New', monospace;
-    margin: 0; padding: 12px 14px 40px;
-    font-size: 15px; -webkit-text-size-adjust: 100%;
-  }
-  h1 { color: #6cf; font-size: 20px; letter-spacing: 2px; margin: 6px 0 2px; }
-  .sub { color: #666; font-size: 12px; margin-bottom: 16px; }
-  h2 { color: #888; font-size: 12px; letter-spacing: 2px; margin: 18px 0 8px; }
-
-  .tabs { display: flex; margin-bottom: 14px; flex-wrap: wrap; }
-  .tab {
-    flex: 1; min-width: 80px; padding: 12px 8px; text-align: center;
-    background: #0d0d0d; border: 1px solid #333; color: #666;
-    font-size: 13px; letter-spacing: 1px; cursor: pointer;
-  }
-  .tab:first-child { border-radius: 4px 0 0 4px; }
-  .tab:last-child { border-radius: 0 4px 4px 0; border-left: none; }
-  .tab.on { color: #6cf; border-color: #6cf; background: #0d2a3a; }
-
-  .panel { display: none; }
-  .panel.on { display: block; }
-
-  .letters {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
-    gap: 6px;
-  }
-  .letter {
-    background: #0d0d0d; border: 1px solid #333;
-    padding: 8px 4px; text-align: center;
-    border-radius: 4px; user-select: none; cursor: pointer;
-  }
-  .letter.on {
-    background: #0d2a3a; border-color: #6cf; color: #6cf;
-    box-shadow: 0 0 8px rgba(102,204,255,0.3);
-  }
-  .letter .ch { font-size: 18px; font-weight: bold; }
-  .letter .code { font-size: 11px; color: #888; margin-top: 2px; letter-spacing: 1px; }
-  .letter.on .code { color: #6cf; }
-
-  .actions { margin-top: 14px; display: flex; gap: 8px; flex-wrap: wrap; }
-  button {
-    background: #0d0d0d; color: #6cf;
-    border: 1px solid #6cf;
-    padding: 12px 18px; font-family: inherit; font-size: 14px;
-    letter-spacing: 1px; border-radius: 4px;
-    min-height: 44px; cursor: pointer;
-  }
-  button:disabled { opacity: 0.35; cursor: not-allowed; }
-  button.small {
-    padding: 8px 12px; font-size: 12px;
-    border-color: #555; color: #999; min-height: 36px;
-  }
-  button.green { border-color: #4caf50; color: #4caf50; }
-  button.red { border-color: #c44; color: #f88; }
-
-  .row { display: flex; gap: 10px; flex-wrap: wrap; }
-  .row > div { flex: 1; min-width: 100px; }
-  label { display: block; color: #888; font-size: 12px; margin-bottom: 4px; }
-  input[type=number], input[type=text] {
-    width: 100%; background: #0d0d0d; color: #6cf;
-    border: 1px solid #333; padding: 12px;
-    font-family: inherit; font-size: 16px;
-    border-radius: 4px; letter-spacing: 2px;
-    -webkit-appearance: none;
-  }
-  input:focus { outline: none; border-color: #6cf; }
-
-  #message, #rxBox {
-    margin-top: 14px; padding: 14px;
-    background: #0d0d0d; border: 1px solid #333;
-    border-radius: 4px; min-height: 70px;
-  }
-  #messageText {
-    font-size: 24px; letter-spacing: 5px;
-    color: #fff; margin-bottom: 10px;
-    word-wrap: break-word;
-  }
-  #messageMorse, #rxMorse {
-    font-size: 16px; letter-spacing: 3px;
-    color: #6cf; word-wrap: break-word; line-height: 1.7;
-  }
-  #messageMorse span.active { color: #ff5; text-shadow: 0 0 10px #ff5; }
-  #messageMorse .sep { color: #555; }
-
-  #status { margin-top: 10px; color: #888; font-size: 13px; min-height: 20px; }
-  #lamp {
-    display: inline-block; width: 12px; height: 12px;
-    border-radius: 50%; background: #333;
-    margin-right: 8px; vertical-align: middle;
-  }
-  #lamp.on { background: #ff3; box-shadow: 0 0 12px #ff3; }
-
-  .hint { color: #555; font-size: 12px; margin-top: 6px; }
-
-  .answer-row { display: flex; gap: 8px; margin-top: 12px; }
-  .answer-row input { flex: 1; font-size: 18px; text-transform: uppercase; }
-  .answer-row button { padding: 12px 16px; }
-
-  .feedback { margin-top: 12px; padding: 12px; border-radius: 4px; display: none; }
-  .feedback.show { display: block; }
-  .feedback.ok { background: #0d2a15; border: 1px solid #4caf50; color: #8f8; }
-  .feedback.bad { background: #2a0d0d; border: 1px solid #c44; color: #f88; }
-  .feedback .label { color: #888; font-size: 11px; letter-spacing: 1px; margin-top: 6px; }
-  .feedback .val { font-size: 20px; letter-spacing: 3px; margin-top: 2px; }
-
-  .stats {
-    display: flex; gap: 8px; margin-top: 16px;
-    padding: 12px; background: #0d0d0d;
-    border: 1px solid #333; border-radius: 4px;
-  }
-  .stats .item { flex: 1; text-align: center; }
-  .stats .num { font-size: 20px; color: #6cf; display: block; }
-  .stats .lbl { color: #666; font-size: 10px; letter-spacing: 1px; }
-
-  #chatLog {
-    margin-top: 14px;
-    padding: 14px;
-    background: #0d0d0d;
-    border: 1px solid #333;
-    border-radius: 4px;
-    height: 320px;
-    overflow-y: auto;
-    font-size: 14px;
-  }
-  #chatLog .msg { margin: 8px 0; padding: 6px 0; border-bottom: 1px solid #1a1a1a; }
-  #chatLog .user { color: #6cf; font-weight: bold; }
-  #chatLog .user.me { color: #8f8; }
-  #chatLog .time { color: #555; font-size: 11px; margin-left: 6px; }
-  #chatLog .text { margin-top: 3px; word-wrap: break-word; color: #e0e0e0; }
-  #chatLog .sys { color: #666; font-style: italic; font-size: 12px; }
+  body { background:#1a1a1a; color:#d0d0d0; font-family:-apple-system,'Courier New',monospace; margin:0; padding:12px 14px 40px; font-size:15px; -webkit-text-size-adjust:100%; }
+  h1 { color:#6cf; font-size:20px; letter-spacing:2px; margin:6px 0 2px; }
+  .sub { color:#666; font-size:12px; margin-bottom:16px; }
+  h2 { color:#888; font-size:12px; letter-spacing:2px; margin:18px 0 8px; }
+  .tabs { display:flex; margin-bottom:14px; flex-wrap:wrap; }
+  .tab { flex:1; min-width:80px; padding:12px 8px; text-align:center; background:#0d0d0d; border:1px solid #333; color:#666; font-size:13px; letter-spacing:1px; cursor:pointer; }
+  .tab:first-child { border-radius:4px 0 0 4px; }
+  .tab:last-child { border-radius:0 4px 4px 0; border-left:none; }
+  .tab.on { color:#6cf; border-color:#6cf; background:#0d2a3a; }
+  .panel { display:none; } .panel.on { display:block; }
+  .letters { display:grid; grid-template-columns:repeat(auto-fill,minmax(56px,1fr)); gap:6px; }
+  .letter { background:#0d0d0d; border:1px solid #333; padding:8px 4px; text-align:center; border-radius:4px; user-select:none; cursor:pointer; }
+  .letter.on { background:#0d2a3a; border-color:#6cf; color:#6cf; box-shadow:0 0 8px rgba(102,204,255,0.3); }
+  .letter .ch { font-size:18px; font-weight:bold; }
+  .letter .code { font-size:11px; color:#888; margin-top:2px; letter-spacing:1px; }
+  .letter.on .code { color:#6cf; }
+  .actions { margin-top:14px; display:flex; gap:8px; flex-wrap:wrap; }
+  button { background:#0d0d0d; color:#6cf; border:1px solid #6cf; padding:12px 18px; font-family:inherit; font-size:14px; letter-spacing:1px; border-radius:4px; min-height:44px; cursor:pointer; }
+  button:disabled { opacity:0.35; cursor:not-allowed; }
+  button.small { padding:8px 12px; font-size:12px; border-color:#555; color:#999; min-height:36px; }
+  button.green { border-color:#4caf50; color:#4caf50; }
+  button.red { border-color:#c44; color:#f88; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; }
+  .row > div { flex:1; min-width:100px; }
+  label { display:block; color:#888; font-size:12px; margin-bottom:4px; }
+  input[type=number], input[type=text] { width:100%; background:#0d0d0d; color:#6cf; border:1px solid #333; padding:12px; font-family:inherit; font-size:16px; border-radius:4px; letter-spacing:2px; -webkit-appearance:none; }
+  input:focus { outline:none; border-color:#6cf; }
+  #message, #rxBox { margin-top:14px; padding:14px; background:#0d0d0d; border:1px solid #333; border-radius:4px; min-height:70px; }
+  #messageText { font-size:24px; letter-spacing:5px; color:#fff; margin-bottom:10px; word-wrap:break-word; }
+  #messageMorse, #rxMorse { font-size:16px; letter-spacing:3px; color:#6cf; word-wrap:break-word; line-height:1.7; }
+  #messageMorse span.active { color:#ff5; text-shadow:0 0 10px #ff5; }
+  #messageMorse .sep { color:#555; }
+  #status { margin-top:10px; color:#888; font-size:13px; min-height:20px; }
+  #lamp { display:inline-block; width:12px; height:12px; border-radius:50%; background:#333; margin-right:8px; vertical-align:middle; }
+  #lamp.on { background:#ff3; box-shadow:0 0 12px #ff3; }
+  .hint { color:#555; font-size:12px; margin-top:6px; }
+  .answer-row { display:flex; gap:8px; margin-top:12px; }
+  .answer-row input { flex:1; font-size:18px; text-transform:uppercase; }
+  .answer-row button { padding:12px 16px; }
+  .feedback { margin-top:12px; padding:12px; border-radius:4px; display:none; }
+  .feedback.show { display:block; }
+  .feedback.ok { background:#0d2a15; border:1px solid #4caf50; color:#8f8; }
+  .feedback.bad { background:#2a0d0d; border:1px solid #c44; color:#f88; }
+  .feedback .label { color:#888; font-size:11px; letter-spacing:1px; margin-top:6px; }
+  .feedback .val { font-size:20px; letter-spacing:3px; margin-top:2px; }
+  .stats { display:flex; gap:8px; margin-top:16px; padding:12px; background:#0d0d0d; border:1px solid #333; border-radius:4px; }
+  .stats .item { flex:1; text-align:center; }
+  .stats .num { font-size:20px; color:#6cf; display:block; }
+  .stats .lbl { color:#666; font-size:10px; letter-spacing:1px; }
+  #chatLog { margin-top:14px; padding:14px; background:#0d0d0d; border:1px solid #333; border-radius:4px; height:320px; overflow-y:auto; font-size:14px; }
+  #chatLog .msg { margin:8px 0; padding:6px 0; border-bottom:1px solid #1a1a1a; }
+  #chatLog .user { color:#6cf; font-weight:bold; }
+  #chatLog .user.me { color:#8f8; }
+  #chatLog .user.clone { color:#c9a; }
+  #chatLog .time { color:#555; font-size:11px; margin-left:6px; }
+  #chatLog .text { margin-top:3px; word-wrap:break-word; color:#e0e0e0; }
+  #chatLog .sys { color:#666; font-style:italic; font-size:12px; }
+  #chatLog .ok { color:#4caf50; font-size:12px; }
+  #chatLog .warn { color:#f88; font-size:12px; }
+  .conn-dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:6px; vertical-align:middle; }
+  .conn-dot.on { background:#4caf50; box-shadow:0 0 6px #4caf50; }
+  .conn-dot.off { background:#c44; }
+  .conn-dot.wait { background:#fa0; animation:pulse 1s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  .users-badge { display:inline-block; background:#0d2a3a; border:1px solid #6cf; color:#6cf; border-radius:12px; padding:3px 10px; font-size:12px; letter-spacing:1px; }
+  .name-row { display:flex; gap:6px; align-items:stretch; }
+  .name-row input { flex:1; }
+  .name-row button { padding:10px 14px; min-height:44px; font-size:16px; }
 </style>
 </head>
 <body>
@@ -187,10 +119,7 @@
     <button id="play" disabled>▶ ПЕРЕДАТЬ</button>
     <button id="stop" disabled>■ СТОП</button>
   </div>
-  <div id="message">
-    <div id="messageText">—</div>
-    <div id="messageMorse"></div>
-  </div>
+  <div id="message"><div id="messageText">—</div><div id="messageMorse"></div></div>
   <div id="status"><span id="lamp"></span><span id="statusText">Выбери буквы</span></div>
 </div>
 
@@ -222,14 +151,16 @@
     ⚠️ Всё, что пишешь — видят все в комнате. Не пиши личное.
   </div>
 
-  <div class="row" style="margin-top: 12px;">
-    <div>
-      <label>Комната:</label>
-      <input id="chatRoom" type="text" value="general" maxlength="20">
-    </div>
-    <div>
-      <label>Позывной:</label>
-      <input id="chatUser" type="text" value="RC1ABC" maxlength="10">
+  <div style="margin-top:12px;">
+    <label>Комната:</label>
+    <input id="chatRoom" type="text" value="general" maxlength="20">
+  </div>
+
+  <div style="margin-top:10px;">
+    <label>Позывной: <button type="button" id="randomNameBtn" class="small" style="padding:3px 8px; min-height:auto; margin-left:6px;">🎲 случайный</button></label>
+    <div class="name-row">
+      <input id="chatUser" type="text" value="" maxlength="10" placeholder="например FOX">
+      <button type="button" id="randomNameBtn2" title="Случайное имя">🎲</button>
     </div>
   </div>
 
@@ -239,8 +170,10 @@
     <button id="chatSoundToggle" class="small">🔊 ЗВУК: ВКЛ</button>
   </div>
 
-  <div id="chatStatus" style="margin-top: 10px; color: #888; font-size: 13px;">
-    Не подключён
+  <div id="chatStatus" style="margin-top:10px; color:#888; font-size:13px; display:flex; align-items:center; flex-wrap:wrap; gap:8px;">
+    <span class="conn-dot off" id="connDot"></span>
+    <span id="connText">Не подключён</span>
+    <span class="users-badge" id="userBadge" style="display:none;">👥 В эфире: <b id="userCount">0</b></span>
   </div>
 
   <div id="chatLog"></div>
@@ -250,8 +183,9 @@
     <button id="chatSend" disabled>➤</button>
   </div>
 
-  <div class="hint" style="margin-top: 8px;">
-    Входящие сообщения автоматически играются морзянкой (если звук включён).
+  <div class="hint" style="margin-top:8px;">
+    Входящие сообщения автоматически играются морзянкой (если звук включён).<br>
+    Одинаковые ники — второй вошедший получает пометку «(клон)».
   </div>
 </div>
 
@@ -320,7 +254,7 @@ document.querySelectorAll('.tab').forEach(tab => {
 });
 
 // =========================================================
-// ГЕНЕРАЦИЯ СЛОВ
+// ГЕНЕРАЦИЯ
 // =========================================================
 const VOWELS = new Set(['A','E','I','O','U','Y']);
 const randomFrom = arr => arr[Math.floor(Math.random() * arr.length)];
@@ -409,8 +343,9 @@ async function transmitMorse(morse, spans) {
   const gapLetter = dot * 3;
   const gapWord = dot * 7;
   let spanIdx = 0;
+  const localStop = stopFlag;
   for (let i = 0; i < morse.length; i++) {
-    if (stopFlag) break;
+    if (stopFlag && !localStop) break;
     const ch = morse[i];
     const span = spans ? spans[spanIdx] : null;
     if (ch === '.') {
@@ -418,14 +353,12 @@ async function transmitMorse(morse, spans) {
       await beep(dot);
       if (span) span.classList.remove('active');
       spanIdx++;
-      if (stopFlag) break;
       await sleep(gapIntra * 1000);
     } else if (ch === '-') {
       if (span) span.classList.add('active');
       await beep(dash);
       if (span) span.classList.remove('active');
       spanIdx++;
-      if (stopFlag) break;
       await sleep(gapIntra * 1000);
     } else if (ch === ' ') {
       spanIdx++;
@@ -441,6 +374,7 @@ function stopTransmission() {
   stopFlag = true;
   if (currentOsc) { try { currentOsc.stop(); } catch(e) {} currentOsc = null; }
   lampEl.classList.remove('on');
+  setTimeout(() => { stopFlag = false; }, 100);
 }
 
 // =========================================================
@@ -551,14 +485,11 @@ function checkAnswer() {
   if (user === correct) {
     stats.ok++; stats.streak++;
     rxFeedback.className = 'feedback ok show';
-    rxFeedback.innerHTML = `<div>✓ <b>ВЕРНО!</b></div>
-      <div class="label">ПРИНЯТО:</div><div class="val">${correct}</div>`;
+    rxFeedback.innerHTML = `<div>✓ <b>ВЕРНО!</b></div><div class="label">ПРИНЯТО:</div><div class="val">${correct}</div>`;
   } else {
     stats.streak = 0;
     rxFeedback.className = 'feedback bad show';
-    rxFeedback.innerHTML = `<div>✗ <b>ОШИБКА</b></div>
-      <div class="label">ТЫ ПРИНЯЛ:</div><div class="val" style="color:#f88;">${user || '(пусто)'}</div>
-      <div class="label">ПРАВИЛЬНО:</div><div class="val" style="color:#8f8;">${correct}</div>`;
+    rxFeedback.innerHTML = `<div>✗ <b>ОШИБКА</b></div><div class="label">ТЫ ПРИНЯЛ:</div><div class="val" style="color:#f88;">${user || '(пусто)'}</div><div class="label">ПРАВИЛЬНО:</div><div class="val" style="color:#8f8;">${correct}</div>`;
   }
   renderMorseInto(rxMorseEl, textToMorse(correct));
   updateStats();
@@ -587,7 +518,7 @@ answerEl.addEventListener('keydown', e => {
 });
 
 // =========================================================
-// ЧАТ через MQTT (с fallback на несколько брокеров)
+// ЧАТ (MQTT + presence + счётчик + клоны)
 // =========================================================
 const chatRoomEl = document.getElementById('chatRoom');
 const chatUserEl = document.getElementById('chatUser');
@@ -598,12 +529,88 @@ const chatLogEl = document.getElementById('chatLog');
 const chatInputEl = document.getElementById('chatInput');
 const chatSendBtn = document.getElementById('chatSend');
 const chatSoundBtn = document.getElementById('chatSoundToggle');
+const connDot = document.getElementById('connDot');
+const connText = document.getElementById('connText');
+const userBadge = document.getElementById('userBadge');
+const userCountEl = document.getElementById('userCount');
+const randomNameBtn = document.getElementById('randomNameBtn');
+const randomNameBtn2 = document.getElementById('randomNameBtn2');
 
 let mqttClient = null;
 let currentTopic = '';
 let chatSoundOn = true;
 let chatAudioQueue = Promise.resolve();
 let chatUser = 'ANON';
+let chatRoom = 'general';
+let currentBroker = null;
+
+// ---- Мои идентификаторы ----
+let myClientId = '';
+let myJoinTime = 0;
+
+// ---- Реестр пользователей ----
+// clientId -> { baseName, joinTime, lastSeen }
+const users = new Map();
+const PRESENCE_INTERVAL = 10000; // 10 сек — отмечусь
+const PRESENCE_TIMEOUT = 25000;  // 25 сек — если тишина, считать ушедшим
+
+// ---- Случайные имена ----
+const NAME_ADJ = ['SWIFT','BRAVE','SILENT','LUCKY','CLEVER','BOLD','CALM','SHARP','BRIGHT','DARK','IRON','STEEL','NIGHT','GOLD','RED','BLUE','WHITE','BLACK','QUIET','WILD'];
+const NAME_NOUN = ['FOX','WOLF','HAWK','BEAR','LION','EAGLE','TIGER','OTTER','RAVEN','LYNX','PANDA','COBRA','ORCA','JAGUAR','FALCON','MOOSE','SHARK','BISON','PUMA','VIPER'];
+
+function randomName() {
+  return NAME_ADJ[Math.floor(Math.random()*NAME_ADJ.length)]
+       + NAME_NOUN[Math.floor(Math.random()*NAME_NOUN.length)];
+}
+function fillRandomName() {
+  chatUserEl.value = randomName();
+}
+randomNameBtn.addEventListener('click', fillRandomName);
+randomNameBtn2.addEventListener('click', fillRandomName);
+// Автозаполнение при первой загрузке
+fillRandomName();
+
+// ---- Разрешение имени (учитывая клоны) ----
+function resolveName(clientId) {
+  const me = users.get(clientId);
+  if (!me) return '?';
+  let earlierClones = 0;
+  for (const [id, u] of users) {
+    if (id === clientId) continue;
+    if (u.baseName === me.baseName && u.joinTime < me.joinTime) {
+      earlierClones++;
+    }
+  }
+  if (earlierClones > 0) return me.baseName + ' (клон)';
+  return me.baseName;
+}
+
+function isClone(clientId) {
+  const me = users.get(clientId);
+  if (!me) return false;
+  for (const [id, u] of users) {
+    if (id === clientId) continue;
+    if (u.baseName === me.baseName && u.joinTime < me.joinTime) return true;
+  }
+  return false;
+}
+
+function updateUserCount() {
+  // Считаем только «живых» пользователей (недавно отмеченных)
+  const now = Date.now();
+  let alive = 0;
+  for (const u of users.values()) {
+    if (now - u.lastSeen <= PRESENCE_TIMEOUT) alive++;
+  }
+  userCountEl.textContent = alive;
+  userBadge.style.display = mqttClient ? 'inline-block' : 'none';
+}
+
+// ---- Статус ----
+function setConnState(state, text) {
+  connDot.className = 'conn-dot ' + state;
+  connText.textContent = text;
+}
 
 chatSoundBtn.addEventListener('click', () => {
   chatSoundOn = !chatSoundOn;
@@ -623,13 +630,12 @@ function escapeHtml(s) {
     '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
   }[c]));
 }
-
 function sanitizeName(s, fallback) {
   const v = String(s || '').replace(/[^a-zA-Z0-9_-]/g, '');
   return v || fallback;
 }
 
-// Список публичных брокеров — пробуем по очереди
+// ---- Брокеры ----
 const BROKERS = [
   { url: 'wss://broker.emqx.io:8084/mqtt',         name: 'EMQX' },
   { url: 'wss://broker.hivemq.com:8884/mqtt',      name: 'HiveMQ' },
@@ -637,41 +643,93 @@ const BROKERS = [
   { url: 'wss://mqtt.eclipseprojects.io:443/mqtt', name: 'Eclipse' }
 ];
 
-let brokerIdx = 0;
-
+// ---- Подключение ----
 function chatConnect() {
   if (mqttClient) return;
   if (typeof mqtt === 'undefined') {
-    chatStatusEl.textContent = 'Ошибка: MQTT.js не загружен (нет интернета?)';
+    setConnState('off', 'MQTT.js не загружен (нет интернета?)');
     return;
   }
 
-  const room = sanitizeName(chatRoomEl.value, 'general');
+  chatRoom = sanitizeName(chatRoomEl.value, 'general');
   chatUser = (chatUserEl.value || 'ANON').toUpperCase().replace(/[^A-Z0-9]/g, '') || 'ANON';
-  currentTopic = 'morse-tester/' + room + '/chat';
+  currentTopic = 'morse-tester/' + chatRoom + '/chat';
+
+  // Генерируем уникальный идентификатор и время входа
+  myClientId = 'm_' + Math.random().toString(16).slice(2, 12);
+  myJoinTime = Date.now();
+
+  // Регистрируем себя в реестре
+  users.set(myClientId, { baseName: chatUser, joinTime: myJoinTime, lastSeen: Date.now() });
 
   chatConnectBtn.disabled = true;
-  brokerIdx = 0;
-  tryBroker(room, chatUser);
+  setConnState('wait', 'Подключение...');
+  tryBroker(0);
 }
 
-function tryBroker(room, user) {
-  if (brokerIdx >= BROKERS.length) {
-    chatStatusEl.textContent = '❌ Не удалось подключиться ни к одному брокеру. Проверь интернет.';
+// ---- Публикация присутствия ----
+function publishPresence() {
+  if (!mqttClient || !mqttClient.connected) return;
+  const presence = {
+    type: 'presence',
+    clientId: myClientId,
+    baseName: chatUser,
+    joinTime: myJoinTime,
+    ts: Date.now()
+  };
+  mqttClient.publish(currentTopic, JSON.stringify(presence), { qos: 0 });
+  users.set(myClientId, { baseName: chatUser, joinTime: myJoinTime, lastSeen: Date.now() });
+  updateUserCount();
+}
+
+// ---- Периодические тики ----
+let presenceTimer = null;
+let cleanupTimer = null;
+
+function startTimers() {
+  stopTimers();
+  // Отмечаюсь каждые 10 сек
+  presenceTimer = setInterval(publishPresence, PRESENCE_INTERVAL);
+  // Чищу «мёртвых» каждые 5 сек
+  cleanupTimer = setInterval(() => {
+    const now = Date.now();
+    let changed = false;
+    for (const [id, u] of users) {
+      if (id === myClientId) continue; // себя не удаляю
+      if (now - u.lastSeen > PRESENCE_TIMEOUT) {
+        const name = resolveName(id);
+        users.delete(id);
+        chatLogAdd(`← ${escapeHtml(name)} вышел`, 'sys');
+        changed = true;
+      }
+    }
+    if (changed) updateUserCount();
+  }, 5000);
+}
+function stopTimers() {
+  if (presenceTimer) { clearInterval(presenceTimer); presenceTimer = null; }
+  if (cleanupTimer) { clearInterval(cleanupTimer); cleanupTimer = null; }
+}
+
+// ---- Попытка подключения ----
+function tryBroker(idx) {
+  if (idx >= BROKERS.length) {
+    setConnState('off', 'Не удалось подключиться ни к одному брокеру');
     chatConnectBtn.disabled = false;
     return;
   }
 
-  const broker = BROKERS[brokerIdx];
-  chatStatusEl.textContent = `Подключение к ${broker.name}... (${brokerIdx + 1}/${BROKERS.length})`;
+  const broker = BROKERS[idx];
+  setConnState('wait', `${broker.name}: подключение (${idx + 1}/${BROKERS.length})...`);
 
   let settled = false;
 
   const client = mqtt.connect(broker.url, {
     clientId: 'morse_' + Math.random().toString(16).slice(2, 10),
     clean: true,
-    reconnectPeriod: 0,
-    connectTimeout: 6000
+    reconnectPeriod: 2000,
+    connectTimeout: 5000,
+    keepalive: 30
   });
 
   const failTimer = setTimeout(() => {
@@ -679,72 +737,161 @@ function tryBroker(room, user) {
     settled = true;
     try { client.end(true); } catch(e) {}
     console.warn('Таймаут', broker.name);
-    brokerIdx++;
-    tryBroker(room, user);
-  }, 7000);
+    tryBroker(idx + 1);
+  }, 8000);
 
   client.on('connect', () => {
-    if (settled) return;
+    if (settled && mqttClient !== client) return;
     settled = true;
     clearTimeout(failTimer);
 
     mqttClient = client;
-    chatStatusEl.innerHTML = `✓ <b>${broker.name}</b> · комната: <b>${room}</b> · позывной: <b>${user}</b>`;
+    currentBroker = broker;
+    setConnState('on', `${broker.name} · ${chatRoom} · ${chatUser}`);
     chatConnectBtn.disabled = true;
     chatDisconnectBtn.disabled = false;
     chatInputEl.disabled = false;
     chatSendBtn.disabled = false;
-    chatLogAdd(`— подключено через ${broker.name}, комната <b>${room}</b> —`, 'sys');
+    chatLogAdd(`— подключено через <b>${broker.name}</b>, комната <b>${chatRoom}</b> —`, 'ok');
 
-    client.subscribe(currentTopic, err => {
-      if (err) chatLogAdd('Ошибка подписки: ' + err.message, 'sys');
+    client.subscribe(currentTopic, { qos: 0 }, err => {
+      if (err) chatLogAdd('Ошибка подписки: ' + err.message, 'warn');
+      else {
+        chatLogAdd(`подписка на <code>${currentTopic}</code> активна`, 'sys');
+        // Объявляюсь в эфире сразу после подписки
+        setTimeout(() => {
+          publishPresence();
+          startTimers();
+          updateUserCount();
+        }, 300);
+      }
     });
   });
 
+  client.on('reconnect', () => {
+    setConnState('wait', `${broker.name}: переподключение...`);
+    chatLogAdd('↻ переподключение...', 'sys');
+  });
+
+  client.on('close', () => {
+    if (mqttClient === client) {
+      setConnState('wait', `${broker.name}: соединение закрыто, восстанавливаю...`);
+    }
+  });
+
+  client.on('offline', () => {
+    if (mqttClient === client) setConnState('wait', 'офлайн — жду сеть...');
+  });
+
+  client.on('error', err => {
+    if (settled && mqttClient === client) {
+      console.warn('Ошибка', broker.name, err.message);
+      return;
+    }
+    if (!settled) {
+      settled = true;
+      clearTimeout(failTimer);
+      console.warn('Ошибка', broker.name, err.message);
+      try { client.end(true); } catch(e) {}
+      tryBroker(idx + 1);
+    }
+  });
+
   client.on('message', (topic, payload) => {
+    let msg;
     try {
-      const msg = JSON.parse(payload.toString());
-      if (msg.user === user) return;
+      msg = JSON.parse(payload.toString());
+    } catch(e) { return; }
+
+    // --- Присутствие ---
+    if (msg.type === 'presence') {
+      if (msg.clientId === myClientId) return;
+      const wasKnown = users.has(msg.clientId);
+      users.set(msg.clientId, {
+        baseName: msg.baseName,
+        joinTime: msg.joinTime || Date.now(),
+        lastSeen: Date.now()
+      });
+      if (!wasKnown) {
+        // Первое появление — объявляю
+        const name = resolveName(msg.clientId);
+        chatLogAdd(`→ ${escapeHtml(name)} вошёл`, 'sys');
+      }
+      updateUserCount();
+      return;
+    }
+
+    // --- Выход ---
+    if (msg.type === 'leave') {
+      if (msg.clientId === myClientId) return;
+      const u = users.get(msg.clientId);
+      if (u) {
+        const name = resolveName(msg.clientId);
+        users.delete(msg.clientId);
+        chatLogAdd(`← ${escapeHtml(name)} вышел`, 'sys');
+        updateUserCount();
+      }
+      return;
+    }
+
+    // --- Обычное сообщение ---
+    if (msg.type === 'msg') {
+      if (msg.clientId === myClientId) return;
+
+      // Обновляю реестр из сообщения (на случай, если presence пропустил)
+      const wasKnown = users.has(msg.clientId);
+      users.set(msg.clientId, {
+        baseName: msg.baseName,
+        joinTime: msg.joinTime || Date.now(),
+        lastSeen: Date.now()
+      });
+      if (!wasKnown) {
+        const name = resolveName(msg.clientId);
+        chatLogAdd(`→ ${escapeHtml(name)} вошёл`, 'sys');
+      }
+      updateUserCount();
+
+      // Отображаю сообщение
+      const name = resolveName(msg.clientId);
       const time = new Date(msg.ts).toLocaleTimeString();
+      const userClass = isClone(msg.clientId) ? 'user clone' : 'user';
       chatLogAdd(
-        `<span class="user">${escapeHtml(msg.user)}</span><span class="time">${time}</span><div class="text">${escapeHtml(msg.text)}</div>`
+        `<span class="${userClass}">${escapeHtml(name)}</span><span class="time">${time}</span><div class="text">${escapeHtml(msg.text)}</div>`
       );
+
+      // Озвучка морзянкой
       if (chatSoundOn) {
         chatAudioQueue = chatAudioQueue.then(async () => {
           try {
             ensureAudio();
+            const saveStop = stopFlag;
+            stopFlag = false;
             await transmitMorse(textToMorse(msg.text.toUpperCase()), null);
+            stopFlag = saveStop;
           } catch(e) {}
         });
       }
-    } catch(e) {}
-  });
-
-  client.on('error', err => {
-    if (settled) return;
-    settled = true;
-    clearTimeout(failTimer);
-    console.warn('Ошибка', broker.name, err.message);
-    try { client.end(true); } catch(e) {}
-    brokerIdx++;
-    tryBroker(room, user);
-  });
-
-  client.on('close', () => {
-    if (!settled) return;
-    if (mqttClient === client) {
-      chatStatusEl.textContent = 'Соединение закрыто, переподключение...';
+      return;
     }
   });
 }
 
 function chatDisconnect() {
+  // Сообщаю всем, что ухожу
+  if (mqttClient && mqttClient.connected) {
+    const leave = { type: 'leave', clientId: myClientId, ts: Date.now() };
+    try { mqttClient.publish(currentTopic, JSON.stringify(leave), { qos: 0 }); } catch(e) {}
+  }
+  stopTimers();
   if (mqttClient) {
     try { mqttClient.end(true); } catch(e) {}
     mqttClient = null;
+    currentBroker = null;
     chatLogAdd('— вышел из комнаты —', 'sys');
   }
-  chatStatusEl.textContent = 'Не подключён';
+  users.clear();
+  setConnState('off', 'Не подключён');
+  userBadge.style.display = 'none';
   chatConnectBtn.disabled = false;
   chatDisconnectBtn.disabled = true;
   chatInputEl.disabled = true;
@@ -753,13 +900,35 @@ function chatDisconnect() {
 
 function chatSend() {
   const text = chatInputEl.value.trim();
-  if (!text || !mqttClient) return;
-  const msg = { user: chatUser, text, ts: Date.now() };
-  mqttClient.publish(currentTopic, JSON.stringify(msg));
+  if (!text) return;
 
+  if (!mqttClient || !mqttClient.connected) {
+    chatLogAdd('⚠ нет соединения — сообщение не отправлено', 'warn');
+    if (mqttClient && !mqttClient.connected) {
+      try { mqttClient.reconnect(); } catch(e) {}
+    }
+    return;
+  }
+
+  const msg = {
+    type: 'msg',
+    clientId: myClientId,
+    baseName: chatUser,
+    joinTime: myJoinTime,
+    text,
+    ts: Date.now()
+  };
+  mqttClient.publish(currentTopic, JSON.stringify(msg), { qos: 0 });
+
+  // Обновляю свой lastSeen
+  users.set(myClientId, { baseName: chatUser, joinTime: myJoinTime, lastSeen: Date.now() });
+
+  // Отображаю у себя
+  const name = resolveName(myClientId);
   const time = new Date(msg.ts).toLocaleTimeString();
+  const userClass = isClone(myClientId) ? 'user me clone' : 'user me';
   chatLogAdd(
-    `<span class="user me">${escapeHtml(chatUser)}</span><span class="time">${time} (ты)</span><div class="text">${escapeHtml(text)}</div>`
+    `<span class="${userClass}">${escapeHtml(name)}</span><span class="time">${time} (ты)</span><div class="text">${escapeHtml(text)}</div>`
   );
   chatInputEl.value = '';
 }
@@ -770,6 +939,33 @@ chatSendBtn.addEventListener('click', chatSend);
 chatInputEl.addEventListener('keydown', e => {
   if (e.key === 'Enter') chatSend();
 });
+
+// ---- Восстановление при возврате в браузер / сеть ----
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && mqttClient) {
+    if (!mqttClient.connected) {
+      chatLogAdd('↻ вернулся в браузер, восстанавливаю связь...', 'sys');
+      try { mqttClient.reconnect(); } catch(e) {}
+    } else {
+      publishPresence();
+    }
+  }
+});
+
+window.addEventListener('online', () => {
+  if (mqttClient && !mqttClient.connected) {
+    chatLogAdd('↻ сеть вернулась, восстанавливаю...', 'sys');
+    try { mqttClient.reconnect(); } catch(e) {}
+  }
+});
+
+// ---- Health-check каждые 10 сек ----
+setInterval(() => {
+  if (!mqttClient) return;
+  if (!mqttClient.connected) {
+    try { mqttClient.reconnect(); } catch(e) {}
+  }
+}, 10000);
 
 // =========================================================
 // ИНИЦИАЛИЗАЦИЯ
