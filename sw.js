@@ -1,7 +1,6 @@
-const CACHE = 'morse-v2';
+const CACHE = 'morse-v3';
 const FILES = [
   './',
-  './index.html',
   './manifest.json',
   './favicon-16x16.png',
   './favicon-32x32.png',
@@ -25,7 +24,18 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('fetch', e => {
-  e.respondWith(
-    caches.match(e.request).then(r => r || fetch(e.request))
-  );
+  const req = e.request;
+  // HTML — всегда с сети (чтобы обновления приходили сразу)
+  if (req.mode === 'navigate' || req.url.endsWith('/') || req.url.endsWith('index.html')) {
+    e.respondWith(
+      fetch(req).then(r => {
+        const copy = r.clone();
+        caches.open(CACHE).then(c => c.put(req, copy));
+        return r;
+      }).catch(() => caches.match(req))
+    );
+    return;
+  }
+  // Остальное — сначала из кэша
+  e.respondWith(caches.match(req).then(r => r || fetch(req)));
 });
