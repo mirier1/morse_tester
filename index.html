@@ -15,7 +15,6 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="Morse">
 
-<!-- MQTT.js для чата -->
 <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
 
 <style>
@@ -136,7 +135,6 @@
   .stats .num { font-size: 20px; color: #6cf; display: block; }
   .stats .lbl { color: #666; font-size: 10px; letter-spacing: 1px; }
 
-  /* Чат */
   #chatLog {
     margin-top: 14px;
     padding: 14px;
@@ -183,7 +181,6 @@
   <div><label>Тон:</label><input id="freq" type="number" value="700" min="300" max="1200"></div>
 </div>
 
-<!-- ====== ПАНЕЛЬ ПЕРЕДАЧИ ====== -->
 <div class="panel on" id="panel-tx">
   <div class="actions">
     <button id="gen">🎲 НОВОЕ</button>
@@ -197,7 +194,6 @@
   <div id="status"><span id="lamp"></span><span id="statusText">Выбери буквы</span></div>
 </div>
 
-<!-- ====== ПАНЕЛЬ ПРИЁМА ====== -->
 <div class="panel" id="panel-rx">
   <div class="hint">Слушай, записывай на бумаге, потом введи ответ.</div>
   <div class="actions">
@@ -220,7 +216,6 @@
   </div>
 </div>
 
-<!-- ====== ПАНЕЛЬ ЧАТА ====== -->
 <div class="panel" id="panel-chat">
   <div class="hint">
     Публичный чат через MQTT. Введи одинаковое имя комнаты у всех участников.<br>
@@ -592,7 +587,7 @@ answerEl.addEventListener('keydown', e => {
 });
 
 // =========================================================
-// ЧАТ через MQTT
+// ЧАТ через MQTT (с fallback на несколько брокеров)
 // =========================================================
 const chatRoomEl = document.getElementById('chatRoom');
 const chatUserEl = document.getElementById('chatUser');
@@ -608,6 +603,7 @@ let mqttClient = null;
 let currentTopic = '';
 let chatSoundOn = true;
 let chatAudioQueue = Promise.resolve();
+let chatUser = 'ANON';
 
 chatSoundBtn.addEventListener('click', () => {
   chatSoundOn = !chatSoundOn;
@@ -633,6 +629,16 @@ function sanitizeName(s, fallback) {
   return v || fallback;
 }
 
+// Список публичных брокеров — пробуем по очереди
+const BROKERS = [
+  { url: 'wss://broker.emqx.io:8084/mqtt',         name: 'EMQX' },
+  { url: 'wss://broker.hivemq.com:8884/mqtt',      name: 'HiveMQ' },
+  { url: 'wss://test.mosquitto.org:8081/mqtt',     name: 'Mosquitto' },
+  { url: 'wss://mqtt.eclipseprojects.io:443/mqtt', name: 'Eclipse' }
+];
+
+let brokerIdx = 0;
+
 function chatConnect() {
   if (mqttClient) return;
   if (typeof mqtt === 'undefined') {
@@ -641,62 +647,94 @@ function chatConnect() {
   }
 
   const room = sanitizeName(chatRoomEl.value, 'general');
-  const user = (chatUserEl.value || 'ANON').toUpperCase().replace(/[^A-Z0-9]/g, '') || 'ANON';
+  chatUser = (chatUserEl.value || 'ANON').toUpperCase().replace(/[^A-Z0-9]/g, '') || 'ANON';
   currentTopic = 'morse-tester/' + room + '/chat';
 
-  chatStatusEl.textContent = 'Подключение...';
   chatConnectBtn.disabled = true;
+  brokerIdx = 0;
+  tryBroker(room, chatUser);
+}
 
-  mqttClient = mqtt.connect('wss://broker.hivemq.com:8884/mqtt', {
+function tryBroker(room, user) {
+  if (brokerIdx >= BROKERS.length) {
+    chatStatusEl.textContent = '❌ Не удалось подключиться ни к одному брокеру. Проверь интернет.';
+    chatConnectBtn.disabled = false;
+    return;
+  }
+
+  const broker = BROKERS[brokerIdx];
+  chatStatusEl.textContent = `Подключение к ${broker.name}... (${brokerIdx + 1}/${BROKERS.length})`;
+
+  let settled = false;
+
+  const client = mqtt.connect(broker.url, {
     clientId: 'morse_' + Math.random().toString(16).slice(2, 10),
     clean: true,
-    reconnectPeriod: 3000,
-    connectTimeout: 8000
+    reconnectPeriod: 0,
+    connectTimeout: 6000
   });
 
-  mqttClient.on('connect', () => {
-    chatStatusEl.innerHTML = `✓ Комната: <b>${room}</b> · позывной: <b>${user}</b>`;
+  const failTimer = setTimeout(() => {
+    if (settled) return;
+    settled = true;
+    try { client.end(true); } catch(e) {}
+    console.warn('Таймаут', broker.name);
+    brokerIdx++;
+    tryBroker(room, user);
+  }, 7000);
+
+  client.on('connect', () => {
+    if (settled) return;
+    settled = true;
+    clearTimeout(failTimer);
+
+    mqttClient = client;
+    chatStatusEl.innerHTML = `✓ <b>${broker.name}</b> · комната: <b>${room}</b> · позывной: <b>${user}</b>`;
     chatConnectBtn.disabled = true;
     chatDisconnectBtn.disabled = false;
     chatInputEl.disabled = false;
     chatSendBtn.disabled = false;
-    chatLogAdd(`— вошёл в комнату <b>${room}</b> как <b>${user}</b> —`, 'sys');
+    chatLogAdd(`— подключено через ${broker.name}, комната <b>${room}</b> —`, 'sys');
 
-    mqttClient.subscribe(currentTopic, err => {
+    client.subscribe(currentTopic, err => {
       if (err) chatLogAdd('Ошибка подписки: ' + err.message, 'sys');
     });
   });
 
-  mqttClient.on('message', (topic, payload) => {
+  client.on('message', (topic, payload) => {
     try {
       const msg = JSON.parse(payload.toString());
       if (msg.user === user) return;
-
       const time = new Date(msg.ts).toLocaleTimeString();
       chatLogAdd(
         `<span class="user">${escapeHtml(msg.user)}</span><span class="time">${time}</span><div class="text">${escapeHtml(msg.text)}</div>`
       );
-
       if (chatSoundOn) {
         chatAudioQueue = chatAudioQueue.then(async () => {
           try {
             ensureAudio();
-            const morse = textToMorse(msg.text.toUpperCase());
-            await transmitMorse(morse, null);
-          } catch(e) { console.warn('morse play error', e); }
+            await transmitMorse(textToMorse(msg.text.toUpperCase()), null);
+          } catch(e) {}
         });
       }
     } catch(e) {}
   });
 
-  mqttClient.on('error', err => {
-    chatStatusEl.textContent = 'Ошибка: ' + err.message;
+  client.on('error', err => {
+    if (settled) return;
+    settled = true;
+    clearTimeout(failTimer);
+    console.warn('Ошибка', broker.name, err.message);
+    try { client.end(true); } catch(e) {}
+    brokerIdx++;
+    tryBroker(room, user);
   });
-  mqttClient.on('reconnect', () => {
-    chatStatusEl.textContent = 'Переподключение...';
-  });
-  mqttClient.on('close', () => {
-    chatStatusEl.textContent = 'Соединение закрыто';
+
+  client.on('close', () => {
+    if (!settled) return;
+    if (mqttClient === client) {
+      chatStatusEl.textContent = 'Соединение закрыто, переподключение...';
+    }
   });
 }
 
@@ -716,13 +754,12 @@ function chatDisconnect() {
 function chatSend() {
   const text = chatInputEl.value.trim();
   if (!text || !mqttClient) return;
-  const user = (chatUserEl.value || 'ANON').toUpperCase().replace(/[^A-Z0-9]/g, '') || 'ANON';
-  const msg = { user, text, ts: Date.now() };
+  const msg = { user: chatUser, text, ts: Date.now() };
   mqttClient.publish(currentTopic, JSON.stringify(msg));
 
   const time = new Date(msg.ts).toLocaleTimeString();
   chatLogAdd(
-    `<span class="user me">${escapeHtml(user)}</span><span class="time">${time} (ты)</span><div class="text">${escapeHtml(text)}</div>`
+    `<span class="user me">${escapeHtml(chatUser)}</span><span class="time">${time} (ты)</span><div class="text">${escapeHtml(text)}</div>`
   );
   chatInputEl.value = '';
 }
@@ -740,7 +777,6 @@ chatInputEl.addEventListener('keydown', e => {
 generateMessage();
 </script>
 
-<!-- Регистрация Service Worker -->
 <script>
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
