@@ -147,17 +147,17 @@
 
 <div class="panel" id="panel-chat">
   <div class="hint">
-    Публичный чат через MQTT. <b>Все участники должны выбрать ОДИН И ТОТ ЖЕ брокер и комнату.</b><br>
+    Публичный чат. <b>У всех должен быть выбран ОДИН И ТОТ ЖЕ брокер и комната.</b><br>
     ⚠️ Всё, что пишешь — видят все в комнате. Не пиши личное.
   </div>
 
   <div style="margin-top:12px;">
-    <label>Брокер (у всех должен быть одинаковый!):</label>
+    <label>Брокер (у всех одинаковый!):</label>
     <select id="chatBroker">
-      <option value="emqx" selected>EMQX (рекомендуется)</option>
+      <option value="eclipse" selected>Eclipse (порт 443, лучший для мобильных)</option>
+      <option value="emqx">EMQX</option>
       <option value="hivemq">HiveMQ</option>
-      <option value="mosquitto">Mosquitto</option>
-      <option value="eclipse">Eclipse</option>
+      <option value="mosquitto">Mosquitto (часто падает)</option>
     </select>
   </div>
 
@@ -528,7 +528,7 @@ answerEl.addEventListener('keydown', e => {
 });
 
 // =========================================================
-// ЧАТ — с ручным выбором брокера, БЕЗ автоперебора
+// ЧАТ — окончательная версия
 // =========================================================
 const chatBrokerEl = document.getElementById('chatBroker');
 const chatRoomEl = document.getElementById('chatRoom');
@@ -554,19 +554,31 @@ let chatUser = 'ANON';
 let chatRoom = 'general';
 let currentBroker = null;
 
-// ---- Идентификаторы ----
-let myClientId = '';
-let myJoinTime = 0;
+// ---- Идентичность (переживает перезагрузку страницы) ----
+function getOrCreateIdentity() {
+  let id = sessionStorage.getItem('morse_client_id');
+  let joinTime = parseInt(sessionStorage.getItem('morse_join_time') || '0', 10);
+  if (!id) {
+    id = 'm_' + Math.random().toString(16).slice(2, 12);
+    sessionStorage.setItem('morse_client_id', id);
+  }
+  if (!joinTime) {
+    joinTime = Date.now();
+    sessionStorage.setItem('morse_join_time', String(joinTime));
+  }
+  return { id, joinTime };
+}
 
-// ---- Реестр ----
+let identity = getOrCreateIdentity();
+
+// ---- Реестр пользователей ----
 const users = new Map();
-const PRESENCE_INTERVAL = 10000;
-const PRESENCE_TIMEOUT = 25000;
+const PRESENCE_INTERVAL = 8000;   // отправляем presence каждые 8 сек
+const PRESENCE_TIMEOUT = 30000;   // считаем ушедшим после 30 сек тишины
 
 // ---- Случайные имена ----
 const NAME_ADJ = ['SWIFT','BRAVE','SILENT','LUCKY','CLEVER','BOLD','CALM','SHARP','BRIGHT','DARK','IRON','STEEL','NIGHT','GOLD','RED','BLUE','WHITE','BLACK','QUIET','WILD'];
 const NAME_NOUN = ['FOX','WOLF','HAWK','BEAR','LION','EAGLE','TIGER','OTTER','RAVEN','LYNX','PANDA','COBRA','ORCA','JAGUAR','FALCON','MOOSE','SHARK','BISON','PUMA','VIPER'];
-
 function randomName() {
   return NAME_ADJ[Math.floor(Math.random()*NAME_ADJ.length)]
        + NAME_NOUN[Math.floor(Math.random()*NAME_NOUN.length)];
@@ -578,10 +590,10 @@ fillRandomName();
 
 // ---- Брокеры ----
 const BROKERS = {
-  emqx:      { url: 'wss://broker.emqx.io:8084/mqtt',         name: 'EMQX' },
-  hivemq:    { url: 'wss://broker.hivemq.com:8884/mqtt',      name: 'HiveMQ' },
-  mosquitto: { url: 'wss://test.mosquitto.org:8081/mqtt',     name: 'Mosquitto' },
-  eclipse:   { url: 'wss://mqtt.eclipseprojects.io:443/mqtt', name: 'Eclipse' }
+  eclipse:   { url: 'wss://mqtt.eclipseprojects.io:443/mqtt', name: 'Eclipse' },
+  emqx:      { url: 'wss://broker.emqx.io:8084/mqtt',          name: 'EMQX' },
+  hivemq:    { url: 'wss://broker.hivemq.com:8884/mqtt',       name: 'HiveMQ' },
+  mosquitto: { url: 'wss://test.mosquitto.org:8081/mqtt',      name: 'Mosquitto' }
 };
 
 // ---- Имя с учётом клонов ----
@@ -640,15 +652,18 @@ function sanitizeName(s, fallback) {
   return v || fallback;
 }
 
-// ---- Presence ----
+// ---- Присутствие ----
 function publishPresence() {
   if (!mqttClient || !mqttClient.connected) return;
   const presence = {
-    type: 'presence', clientId: myClientId,
-    baseName: chatUser, joinTime: myJoinTime, ts: Date.now()
+    type: 'presence',
+    clientId: identity.id,
+    baseName: chatUser,
+    joinTime: identity.joinTime,
+    ts: Date.now()
   };
   mqttClient.publish(currentTopic, JSON.stringify(presence), { qos: 0 });
-  users.set(myClientId, { baseName: chatUser, joinTime: myJoinTime, lastSeen: Date.now() });
+  users.set(identity.id, { baseName: chatUser, joinTime: identity.joinTime, lastSeen: Date.now() });
   updateUserCount();
 }
 
@@ -661,7 +676,7 @@ function startTimers() {
     const now = Date.now();
     let changed = false;
     for (const [id, u] of users) {
-      if (id === myClientId) continue;
+      if (id === identity.id) continue;
       if (now - u.lastSeen > PRESENCE_TIMEOUT) {
         const name = resolveName(id);
         users.delete(id);
@@ -677,24 +692,37 @@ function stopTimers() {
   if (cleanupTimer) { clearInterval(cleanupTimer); cleanupTimer = null; }
 }
 
-// ---- Подключение (только к выбранному брокеру) ----
+// ---- Обработка "мёртвых двойников" ----
+// Если у того же baseName есть более старая запись, которая давно молчит — тихо удалить её,
+// чтобы не появлялось "X вышел" при переподключении.
+function purgeStaleClones(baseName, currentClientId) {
+  const now = Date.now();
+  for (const [id, u] of users) {
+    if (id === currentClientId) continue;
+    if (u.baseName !== baseName) continue;
+    if (now - u.lastSeen > PRESENCE_TIMEOUT) {
+      users.delete(id);
+    }
+  }
+}
+
+// ---- Подключение ----
 function chatConnect() {
   if (mqttClient) return;
   if (typeof mqtt === 'undefined') {
-    setConnState('off', 'MQTT.js не загружен (нет интернета?)');
+    setConnState('off', 'MQTT.js не загружен — проверь интернет');
     return;
   }
 
   const brokerKey = chatBrokerEl.value;
-  const broker = BROKERS[brokerKey] || BROKERS.emqx;
+  const broker = BROKERS[brokerKey] || BROKERS.eclipse;
 
   chatRoom = sanitizeName(chatRoomEl.value, 'general');
   chatUser = (chatUserEl.value || 'ANON').toUpperCase().replace(/[^A-Z0-9]/g, '') || 'ANON';
   currentTopic = 'morse-tester/' + chatRoom + '/chat';
 
-  myClientId = 'm_' + Math.random().toString(16).slice(2, 12);
-  myJoinTime = Date.now();
-  users.set(myClientId, { baseName: chatUser, joinTime: myJoinTime, lastSeen: Date.now() });
+  // Регистрируем себя
+  users.set(identity.id, { baseName: chatUser, joinTime: identity.joinTime, lastSeen: Date.now() });
 
   chatConnectBtn.disabled = true;
   setConnState('wait', `${broker.name}: подключение...`);
@@ -703,30 +731,29 @@ function chatConnect() {
   let settled = false;
 
   const client = mqtt.connect(broker.url, {
-    clientId: 'morse_' + Math.random().toString(16).slice(2, 10),
+    clientId: identity.id,              // тот же ID при переподключении
     clean: true,
-    reconnectPeriod: 0,      // ВАЖНО: без автоматического реконнекта
-    connectTimeout: 8000,
-    keepalive: 30
+    reconnectPeriod: 3000,              // автореконнект каждые 3 сек
+    connectTimeout: 10000,
+    keepalive: 30                       // heartbeat каждые 30 сек
   });
 
-  // Таймаут подключения — не переключаемся, а просто говорим об ошибке
   const failTimer = setTimeout(() => {
     if (settled) return;
     settled = true;
     try { client.end(true); } catch(e) {}
-    setConnState('off', `${broker.name}: не отвечает. Попробуй ещё раз.`);
-    chatLogAdd(`✗ ${broker.name} не ответил за 8 сек. Проверь сеть и попробуй снова.`, 'warn');
+    setConnState('off', `${broker.name}: не отвечает`);
+    chatLogAdd(`✗ ${broker.name} не ответил за 10 сек. Попробуй другой брокер.`, 'warn');
     chatConnectBtn.disabled = false;
     chatDisconnectBtn.disabled = true;
     chatInputEl.disabled = true;
     chatSendBtn.disabled = true;
-  }, 9000);
+  }, 12000);
 
   client.on('connect', () => {
-    if (settled) return;
-    settled = true;
+    // Срабатывает и при первом подключении, и при каждом реконнекте
     clearTimeout(failTimer);
+    settled = true;
 
     mqttClient = client;
     currentBroker = broker;
@@ -735,45 +762,51 @@ function chatConnect() {
     chatDisconnectBtn.disabled = false;
     chatInputEl.disabled = false;
     chatSendBtn.disabled = false;
-    chatLogAdd(`— подключено к <b>${broker.name}</b>, комната <b>${chatRoom}</b> —`, 'ok');
+
+    // Один раз пишем «подключено», при реконнектах — коротко
+    if (!client._wasConnected) {
+      chatLogAdd(`— подключено к <b>${broker.name}</b>, комната <b>${chatRoom}</b> —`, 'ok');
+      client._wasConnected = true;
+    } else {
+      chatLogAdd('↻ связь восстановлена', 'ok');
+    }
 
     client.subscribe(currentTopic, { qos: 0 }, err => {
-      if (err) chatLogAdd('Ошибка подписки: ' + err.message, 'warn');
-      else {
-        chatLogAdd(`подписка активна`, 'sys');
-        setTimeout(() => { publishPresence(); startTimers(); updateUserCount(); }, 300);
+      if (err) {
+        chatLogAdd('Ошибка подписки: ' + err.message, 'warn');
+      } else {
+        chatLogAdd('подписка активна', 'sys');
+        // Сразу отмечаемся и запускаем таймеры
+        setTimeout(() => { publishPresence(); startTimers(); }, 200);
       }
     });
   });
 
+  client.on('reconnect', () => {
+    setConnState('wait', `${broker.name}: переподключение...`);
+  });
+
   client.on('close', () => {
     if (mqttClient === client) {
-      setConnState('off', `${broker.name}: соединение закрыто`);
-      chatLogAdd('⚠ соединение с брокером закрыто', 'warn');
-      stopTimers();
-      mqttClient = null;
-      chatDisconnectBtn.disabled = true;
-      chatConnectBtn.disabled = false;
-      chatInputEl.disabled = true;
-      chatSendBtn.disabled = true;
-      userBadge.style.display = 'none';
+      setConnState('wait', `${broker.name}: связь потеряна, восстанавливаю...`);
     }
   });
 
+  client.on('offline', () => {
+    if (mqttClient === client) setConnState('wait', 'офлайн — жду сеть...');
+  });
+
   client.on('error', err => {
-    if (settled && mqttClient === client) {
-      chatLogAdd('⚠ ошибка: ' + err.message, 'warn');
-      return;
-    }
     if (!settled) {
       settled = true;
       clearTimeout(failTimer);
       try { client.end(true); } catch(e) {}
-      setConnState('off', `${broker.name}: ошибка подключения`);
+      setConnState('off', `${broker.name}: ошибка`);
       chatLogAdd(`✗ ${broker.name}: ${err.message}`, 'warn');
       chatConnectBtn.disabled = false;
       chatDisconnectBtn.disabled = true;
     }
+    // Ошибки после подключения игнорируем — MQTT.js сам переподключится
   });
 
   client.on('message', (topic, payload) => {
@@ -781,13 +814,19 @@ function chatConnect() {
     try { msg = JSON.parse(payload.toString()); } catch(e) { return; }
 
     if (msg.type === 'presence') {
-      if (msg.clientId === myClientId) return;
+      if (msg.clientId === identity.id) {
+        // Это моё же сообщение — обновляю lastSeen, ничего не логирую
+        users.set(identity.id, { baseName: chatUser, joinTime: identity.joinTime, lastSeen: Date.now() });
+        return;
+      }
       const wasKnown = users.has(msg.clientId);
       users.set(msg.clientId, {
         baseName: msg.baseName,
         joinTime: msg.joinTime || Date.now(),
         lastSeen: Date.now()
       });
+      // Если тот же ник, что у меня или у другого клиента, но старая запись молчит — убираем её молча
+      purgeStaleClones(msg.baseName, msg.clientId);
       if (!wasKnown) {
         const name = resolveName(msg.clientId);
         chatLogAdd(`→ ${escapeHtml(name)} вошёл`, 'sys');
@@ -797,7 +836,7 @@ function chatConnect() {
     }
 
     if (msg.type === 'leave') {
-      if (msg.clientId === myClientId) return;
+      if (msg.clientId === identity.id) return;
       const u = users.get(msg.clientId);
       if (u) {
         const name = resolveName(msg.clientId);
@@ -809,7 +848,7 @@ function chatConnect() {
     }
 
     if (msg.type === 'msg') {
-      if (msg.clientId === myClientId) return;
+      if (msg.clientId === identity.id) return;
 
       const wasKnown = users.has(msg.clientId);
       users.set(msg.clientId, {
@@ -817,6 +856,7 @@ function chatConnect() {
         joinTime: msg.joinTime || Date.now(),
         lastSeen: Date.now()
       });
+      purgeStaleClones(msg.baseName, msg.clientId);
       if (!wasKnown) {
         const name = resolveName(msg.clientId);
         chatLogAdd(`→ ${escapeHtml(name)} вошёл`, 'sys');
@@ -846,8 +886,9 @@ function chatConnect() {
 }
 
 function chatDisconnect() {
+  // Пытаемся попрощаться корректно
   if (mqttClient && mqttClient.connected) {
-    const leave = { type: 'leave', clientId: myClientId, ts: Date.now() };
+    const leave = { type: 'leave', clientId: identity.id, ts: Date.now() };
     try { mqttClient.publish(currentTopic, JSON.stringify(leave), { qos: 0 }); } catch(e) {}
   }
   stopTimers();
@@ -871,20 +912,20 @@ function chatSend() {
   if (!text) return;
 
   if (!mqttClient || !mqttClient.connected) {
-    chatLogAdd('⚠ нет соединения — сообщение не отправлено. Нажми «Подключиться».', 'warn');
+    chatLogAdd('⚠ нет связи с брокером — жди восстановления или подключись заново', 'warn');
     return;
   }
 
   const msg = {
-    type: 'msg', clientId: myClientId, baseName: chatUser,
-    joinTime: myJoinTime, text, ts: Date.now()
+    type: 'msg', clientId: identity.id, baseName: chatUser,
+    joinTime: identity.joinTime, text, ts: Date.now()
   };
   mqttClient.publish(currentTopic, JSON.stringify(msg), { qos: 0 });
-  users.set(myClientId, { baseName: chatUser, joinTime: myJoinTime, lastSeen: Date.now() });
+  users.set(identity.id, { baseName: chatUser, joinTime: identity.joinTime, lastSeen: Date.now() });
 
-  const name = resolveName(myClientId);
+  const name = resolveName(identity.id);
   const time = new Date(msg.ts).toLocaleTimeString();
-  const userClass = isClone(myClientId) ? 'user me clone' : 'user me';
+  const userClass = isClone(identity.id) ? 'user me clone' : 'user me';
   chatLogAdd(
     `<span class="${userClass}">${escapeHtml(name)}</span><span class="time">${time} (ты)</span><div class="text">${escapeHtml(text)}</div>`
   );
@@ -898,8 +939,37 @@ chatInputEl.addEventListener('keydown', e => {
   if (e.key === 'Enter') chatSend();
 });
 
-// ---- Никакого автореконнекта при visibilitychange/online.
-//      Пользователь сам решает, когда подключаться. ----
+// ---- Восстановление при возврате в браузер / появлении сети ----
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && mqttClient) {
+    if (!mqttClient.connected) {
+      try { mqttClient.reconnect(); } catch(e) {}
+    } else {
+      publishPresence();
+    }
+  }
+});
+window.addEventListener('online', () => {
+  if (mqttClient && !mqttClient.connected) {
+    try { mqttClient.reconnect(); } catch(e) {}
+  }
+});
+
+// ---- Скажем «пока» при закрытии вкладки ----
+window.addEventListener('beforeunload', () => {
+  if (mqttClient && mqttClient.connected) {
+    const leave = { type: 'leave', clientId: identity.id, ts: Date.now() };
+    try { mqttClient.publish(currentTopic, JSON.stringify(leave), { qos: 0 }); } catch(e) {}
+  }
+});
+
+// ---- Health-check каждые 15 сек ----
+setInterval(() => {
+  if (!mqttClient) return;
+  if (!mqttClient.connected) {
+    try { mqttClient.reconnect(); } catch(e) {}
+  }
+}, 15000);
 
 // =========================================================
 // ИНИЦИАЛИЗАЦИЯ
