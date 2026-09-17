@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Morse Trainer</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    background: #1a1a1a; color: #d0d0d0;
+    font-family: -apple-system, 'Courier New', monospace;
+    margin: 0; padding: 12px 14px 40px;
+    font-size: 15px; -webkit-text-size-adjust: 100%;
+  }
+  h1 { color: #6cf; font-size: 20px; letter-spacing: 2px; margin: 6px 0 2px; }
+  .sub { color: #666; font-size: 12px; margin-bottom: 16px; }
+  h2 { color: #888; font-size: 12px; letter-spacing: 2px; margin: 18px 0 8px; }
+
+  .tabs { display: flex; margin-bottom: 14px; }
+  .tab {
+    flex: 1; padding: 12px 8px; text-align: center;
+    background: #0d0d0d; border: 1px solid #333; color: #666;
+    font-size: 13px; letter-spacing: 1px;
+  }
+  .tab:first-child { border-radius: 4px 0 0 4px; }
+  .tab:last-child { border-radius: 0 4px 4px 0; border-left: none; }
+  .tab.on { color: #6cf; border-color: #6cf; background: #0d2a3a; }
+
+  .panel { display: none; }
+  .panel.on { display: block; }
+
+  .letters {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
+    gap: 6px;
+  }
+  .letter {
+    background: #0d0d0d; border: 1px solid #333;
+    padding: 8px 4px; text-align: center;
+    border-radius: 4px; user-select: none;
+  }
+  .letter.on {
+    background: #0d2a3a; border-color: #6cf; color: #6cf;
+    box-shadow: 0 0 8px rgba(102,204,255,0.3);
+  }
+  .letter .ch { font-size: 18px; font-weight: bold; }
+  .letter .code { font-size: 11px; color: #888; margin-top: 2px; letter-spacing: 1px; }
+  .letter.on .code { color: #6cf; }
+
+  .actions { margin-top: 14px; display: flex; gap: 8px; flex-wrap: wrap; }
+  button {
+    background: #0d0d0d; color: #6cf;
+    border: 1px solid #6cf;
+    padding: 12px 18px; font-family: inherit; font-size: 14px;
+    letter-spacing: 1px; border-radius: 4px;
+    min-height: 44px;
+  }
+  button:disabled { opacity: 0.35; }
+  button.small {
+    padding: 8px 12px; font-size: 12px;
+    border-color: #555; color: #999; min-height: 36px;
+  }
+  button.green { border-color: #4caf50; color: #4caf50; }
+
+  .row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .row > div { flex: 1; min-width: 100px; }
+  label { display: block; color: #888; font-size: 12px; margin-bottom: 4px; }
+  input[type=number], input[type=text] {
+    width: 100%; background: #0d0d0d; color: #6cf;
+    border: 1px solid #333; padding: 12px;
+    font-family: inherit; font-size: 16px;
+    border-radius: 4px; letter-spacing: 2px;
+    -webkit-appearance: none;
+  }
+  input:focus { outline: none; border-color: #6cf; }
+
+  #message, #rxBox {
+    margin-top: 14px; padding: 14px;
+    background: #0d0d0d; border: 1px solid #333;
+    border-radius: 4px; min-height: 70px;
+  }
+  #messageText {
+    font-size: 24px; letter-spacing: 5px;
+    color: #fff; margin-bottom: 10px;
+    word-wrap: break-word;
+  }
+  #messageMorse, #rxMorse {
+    font-size: 16px; letter-spacing: 3px;
+    color: #6cf; word-wrap: break-word; line-height: 1.7;
+  }
+  #messageMorse span.active { color: #ff5; text-shadow: 0 0 10px #ff5; }
+  #messageMorse .sep { color: #555; }
+
+  #status { margin-top: 10px; color: #888; font-size: 13px; min-height: 20px; }
+  #lamp {
+    display: inline-block; width: 12px; height: 12px;
+    border-radius: 50%; background: #333;
+    margin-right: 8px; vertical-align: middle;
+  }
+  #lamp.on { background: #ff3; box-shadow: 0 0 12px #ff3; }
+
+  .hint { color: #555; font-size: 12px; margin-top: 6px; }
+
+  .answer-row { display: flex; gap: 8px; margin-top: 12px; }
+  .answer-row input { flex: 1; font-size: 18px; text-transform: uppercase; }
+  .answer-row button { padding: 12px 16px; }
+
+  .feedback { margin-top: 12px; padding: 12px; border-radius: 4px; display: none; }
+  .feedback.show { display: block; }
+  .feedback.ok { background: #0d2a15; border: 1px solid #4caf50; color: #8f8; }
+  .feedback.bad { background: #2a0d0d; border: 1px solid #c44; color: #f88; }
+  .feedback .label { color: #888; font-size: 11px; letter-spacing: 1px; margin-top: 6px; }
+  .feedback .val { font-size: 20px; letter-spacing: 3px; margin-top: 2px; }
+
+  .stats {
+    display: flex; gap: 8px; margin-top: 16px;
+    padding: 12px; background: #0d0d0d;
+    border: 1px solid #333; border-radius: 4px;
+  }
+  .stats .item { flex: 1; text-align: center; }
+  .stats .num { font-size: 20px; color: #6cf; display: block; }
+  .stats .lbl { color: #666; font-size: 10px; letter-spacing: 1px; }
+</style>
+</head>
+<body>
+
+<h1>▌ MORSE TRAINER</h1>
+<div class="sub">Учи по буквам. Работает только с теми, что знаешь.</div>
+
+<div class="tabs">
+  <div class="tab on" data-tab="tx">📡 ПЕРЕДАЧА</div>
+  <div class="tab" data-tab="rx">🎧 ПРИЁМ</div>
+</div>
+
+<h2>Я ЗНАЮ БУКВЫ:</h2>
+<div class="letters" id="letters"></div>
+
+<div class="actions">
+  <button class="small" id="selAll">Все</button>
+  <button class="small" id="selNone">Снять</button>
+  <button class="small" id="selBasic">Базовые</button>
+</div>
+
+<h2>НАСТРОЙКИ:</h2>
+<div class="row">
+  <div><label>Слов:</label><input id="wordCount" type="number" value="3" min="1" max="10"></div>
+  <div><label>Длина:</label><input id="maxWordLen" type="number" value="4" min="1" max="12"></div>
+  <div><label>WPM:</label><input id="wpm" type="number" value="12" min="5" max="40"></div>
+  <div><label>Тон:</label><input id="freq" type="number" value="700" min="300" max="1200"></div>
+</div>
+
+<div class="panel on" id="panel-tx">
+  <div class="actions">
+    <button id="gen">🎲 НОВОЕ</button>
+    <button id="play" disabled>▶ ПЕРЕДАТЬ</button>
+    <button id="stop" disabled>■ СТОП</button>
+  </div>
+  <div id="message">
+    <div id="messageText">—</div>
+    <div id="messageMorse"></div>
+  </div>
+  <div id="status"><span id="lamp"></span><span id="statusText">Выбери буквы</span></div>
+</div>
+
+<div class="panel" id="panel-rx">
+  <div class="hint">Слушай, записывай на бумаге, потом введи ответ.</div>
+  <div class="actions">
+    <button id="rxStart">🎧 ПЕРЕДАТЬ</button>
+    <button id="rxRepeat" disabled>🔁 ЕЩЁ</button>
+    <button id="rxStop" disabled>■ СТОП</button>
+    <button id="rxReveal" class="small" disabled>👁 ОТВЕТ</button>
+  </div>
+  <div id="rxBox"><div id="rxMorse"></div></div>
+  <div class="answer-row">
+    <input id="answer" type="text" placeholder="ЧТО ПРИНЯЛ?" disabled autocomplete="off">
+    <button id="check" class="green" disabled>✓</button>
+  </div>
+  <div id="rxFeedback" class="feedback"></div>
+  <div class="stats">
+    <div class="item"><span class="num" id="stTotal">0</span><span class="lbl">ПОПЫТОК</span></div>
+    <div class="item"><span class="num" id="stOk">0</span><span class="lbl">ВЕРНО</span></div>
+    <div class="item"><span class="num" id="stAcc">—</span><span class="lbl">ТОЧНОСТЬ</span></div>
+    <div class="item"><span class="num" id="stStreak">0</span><span class="lbl">СЕРИЯ</span></div>
+  </div>
+</div>
+
+<script>
+const MORSE = {
+  'A':'.-','B':'-...','C':'-.-.','D':'-..','E':'.','F':'..-.','G':'--.','H':'....',
+  'I':'..','J':'.---','K':'-.-','L':'.-..','M':'--','N':'-.','O':'---','P':'.--.',
+  'Q':'--.-','R':'.-.','S':'...','T':'-','U':'..-','V':'...-','W':'.--','X':'-..-',
+  'Y':'-.--','Z':'--..','0':'-----','1':'.----','2':'..---','3':'...--','4':'....-',
+  '5':'.....','6':'-....','7':'--...','8':'---..','9':'----.'
+};
+
+const lettersEl = document.getElementById('letters');
+const wpmEl = document.getElementById('wpm');
+const freqEl = document.getElementById('freq');
+const wordCountEl = document.getElementById('wordCount');
+const maxWordLenEl = document.getElementById('maxWordLen');
+const lampEl = document.getElementById('lamp');
+const statusEl = document.getElementById('statusText');
+const known = new Set(['M','A']);
+
+function buildLettersGrid() {
+  lettersEl.innerHTML = '';
+  for (const ch of Object.keys(MORSE)) {
+    const div = document.createElement('div');
+    div.className = 'letter' + (known.has(ch) ? ' on' : '');
+    div.dataset.ch = ch;
+    div.innerHTML = `<div class="ch">${ch}</div><div class="code">${MORSE[ch]}</div>`;
+    div.addEventListener('click', () => {
+      if (known.has(ch)) known.delete(ch); else known.add(ch);
+      div.classList.toggle('on');
+    });
+    lettersEl.appendChild(div);
+  }
+}
+function setKnown(list) {
+  known.clear();
+  list.forEach(c => known.add(c));
+  document.querySelectorAll('.letter').forEach(el =>
+    el.classList.toggle('on', known.has(el.dataset.ch)));
+}
+buildLettersGrid();
+document.getElementById('selAll').onclick = () => setKnown(Object.keys(MORSE));
+document.getElementById('selNone').onclick = () => setKnown([]);
+document.getElementById('selBasic').onclick = () => setKnown(['E','T','A','I','M','N','S','O']);
+
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('on'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('on'));
+    tab.classList.add('on');
+    document.getElementById('panel-' + tab.dataset.tab).classList.add('on');
+  });
+});
+
+const VOWELS = new Set(['A','E','I','O','U','Y']);
+const randomFrom = arr => arr[Math.floor(Math.random() * arr.length)];
+
+function generateWord(pool) {
+  const maxLen = Math.max(1, parseInt(maxWordLenEl.value) || 4);
+  const len = 2 + Math.floor(Math.random() * Math.max(1, maxLen - 1));
+  const vowels = pool.filter(c => VOWELS.has(c));
+  const consonants = pool.filter(c => !VOWELS.has(c));
+  const word = [];
+  let lastWasVowel = Math.random() < 0.5;
+  for (let i = 0; i < len; i++) {
+    let options = (vowels.length && consonants.length)
+      ? (lastWasVowel ? consonants : vowels) : pool;
+    const c = randomFrom(options);
+    word.push(c);
+    lastWasVowel = VOWELS.has(c);
+  }
+  return word.join('');
+}
+
+function generateMessageText() {
+  if (known.size === 0) return null;
+  const pool = [...known];
+  const n = Math.max(1, parseInt(wordCountEl.value) || 3);
+  const words = [];
+  for (let i = 0; i < n; i++) words.push(generateWord(pool));
+  return words.join(' ');
+}
+
+function textToMorse(text) {
+  const parts = [];
+  for (const ch of text.toUpperCase()) {
+    if (ch === ' ') parts.push('/');
+    else if (MORSE[ch]) parts.push(MORSE[ch]);
+  }
+  return parts.join(' ');
+}
+
+let audioCtx = null;
+let currentOsc = null;
+let stopFlag = false;
+
+function ensureAudio() {
+  if (!audioCtx) {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    audioCtx = new Ctx();
+  }
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+
+function beep(duration) {
+  return new Promise(resolve => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    const now = audioCtx.currentTime;
+    const fade = 0.005;
+    osc.type = 'sine';
+    osc.frequency.value = parseFloat(freqEl.value);
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.3, now + fade);
+    gain.gain.setValueAtTime(0.3, now + duration - fade);
+    gain.gain.linearRampToValueAtTime(0, now + duration);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(now);
+    osc.stop(now + duration);
+    currentOsc = osc;
+    lampEl.classList.add('on');
+    osc.onended = () => {
+      lampEl.classList.remove('on');
+      currentOsc = null;
+      resolve();
+    };
+  });
+}
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+async function transmitMorse(morse, spans) {
+  const wpm = parseFloat(wpmEl.value) || 12;
+  const dot = 1.2 / wpm;
+  const dash = dot * 3;
+  const gapIntra = dot;
+  const gapLetter = dot * 3;
+  const gapWord = dot * 7;
+  let spanIdx = 0;
+  for (let i = 0; i < morse.length; i++) {
+    if (stopFlag) break;
+    const ch = morse[i];
+    const span = spans ? spans[spanIdx] : null;
+    if (ch === '.') {
+      if (span) span.classList.add('active');
+      await beep(dot);
+      if (span) span.classList.remove('active');
+      spanIdx++;
+      if (stopFlag) break;
+      await sleep(gapIntra * 1000);
+    } else if (ch === '-') {
+      if (span) span.classList.add('active');
+      await beep(dash);
+      if (span) span.classList.remove('active');
+      spanIdx++;
+      if (stopFlag) break;
+      await sleep(gapIntra * 1000);
+    } else if (ch === ' ') {
+      spanIdx++;
+      await sleep((gapLetter - gapIntra) * 1000);
+    } else if (ch === '/') {
+      spanIdx++;
+      await sleep((gapWord - gapIntra) * 1000);
+    }
+  }
+}
+
+function stopTransmission() {
+  stopFlag = true;
+  if (currentOsc) { try { currentOsc.stop(); } catch(e) {} currentOsc = null; }
+  lampEl.classList.remove('on');
+}
+
+// ПЕРЕДАЧА
+const msgTextEl = document.getElementById('messageText');
+const msgMorseEl = document.getElementById('messageMorse');
+const playBtn = document.getElementById('play');
+const stopBtn = document.getElementById('stop');
+const genBtn = document.getElementById('gen');
+let currentMessage = '';
+
+function renderMorseInto(el, morse) {
+  el.innerHTML = '';
+  const spans = [];
+  for (const ch of morse) {
+    const s = document.createElement('span');
+    if (ch === '.') s.textContent = '·';
+    else if (ch === '-') s.textContent = '–';
+    else if (ch === '/') { s.textContent = ' / '; s.className = 'sep'; }
+    else { s.textContent = ' '; s.className = 'sep'; }
+    el.appendChild(s);
+    spans.push(s);
+  }
+  return spans;
+}
+
+function generateMessage() {
+  if (known.size === 0) { statusEl.textContent = 'Отметь хотя бы одну букву!'; return; }
+  currentMessage = generateMessageText();
+  msgTextEl.textContent = currentMessage;
+  renderMorseInto(msgMorseEl, textToMorse(currentMessage));
+  playBtn.disabled = false;
+  statusEl.textContent = 'Жми «Передать»';
+}
+
+genBtn.addEventListener('click', generateMessage);
+
+async function transmitTX() {
+  if (!currentMessage) return;
+  ensureAudio();
+  stopFlag = false;
+  playBtn.disabled = true; stopBtn.disabled = false; genBtn.disabled = true;
+  statusEl.textContent = 'Передача...';
+  await transmitMorse(textToMorse(currentMessage), [...msgMorseEl.children]);
+  statusEl.textContent = stopFlag ? 'Остановлено' : 'Готово';
+  playBtn.disabled = false; stopBtn.disabled = true; genBtn.disabled = false;
+}
+playBtn.addEventListener('click', transmitTX);
+stopBtn.addEventListener('click', stopTransmission);
+
+// ПРИЁМ
+const rxMorseEl = document.getElementById('rxMorse');
+const rxStartBtn = document.getElementById('rxStart');
+const rxRepeatBtn = document.getElementById('rxRepeat');
+const rxStopBtn = document.getElementById('rxStop');
+const rxRevealBtn = document.getElementById('rxReveal');
+const answerEl = document.getElementById('answer');
+const checkBtn = document.getElementById('check');
+const rxFeedback = document.getElementById('rxFeedback');
+
+let rxTarget = '';
+let rxAnswered = false;
+const stats = { total: 0, ok: 0, streak: 0 };
+
+function updateStats() {
+  document.getElementById('stTotal').textContent = stats.total;
+  document.getElementById('stOk').textContent = stats.ok;
+  document.getElementById('stStreak').textContent = stats.streak;
+  document.getElementById('stAcc').textContent = stats.total
+    ? Math.round(stats.ok / stats.total * 100) + '%' : '—';
+}
+
+async function rxTransmit() {
+  if (!rxTarget) return;
+  ensureAudio();
+  stopFlag = false;
+  rxStartBtn.disabled = true; rxRepeatBtn.disabled = true;
+  rxStopBtn.disabled = false; rxRevealBtn.disabled = true;
+  checkBtn.disabled = true; answerEl.disabled = true;
+  rxMorseEl.innerHTML = '';
+  statusEl.textContent = 'Слушай!';
+  await transmitMorse(textToMorse(rxTarget), null);
+  statusEl.textContent = 'Введи что принял';
+  answerEl.disabled = false; checkBtn.disabled = false;
+  answerEl.value = ''; answerEl.focus();
+  rxRepeatBtn.disabled = false; rxStopBtn.disabled = true;
+  rxRevealBtn.disabled = false; rxStartBtn.disabled = false;
+}
+
+function rxStart() {
+  if (known.size === 0) { alert('Отметь хотя бы одну букву!'); return; }
+  rxTarget = generateMessageText();
+  rxAnswered = false;
+  rxFeedback.classList.remove('show');
+  answerEl.value = '';
+  rxTransmit();
+}
+
+function checkAnswer() {
+  if (rxAnswered) return;
+  const user = answerEl.value.trim().toUpperCase().replace(/\s+/g, ' ');
+  const correct = rxTarget.toUpperCase();
+  rxAnswered = true;
+  stats.total++;
+  if (user === correct) {
+    stats.ok++; stats.streak++;
+    rxFeedback.className = 'feedback ok show';
+    rxFeedback.innerHTML = `<div>✓ <b>ВЕРНО!</b></div>
+      <div class="label">ПРИНЯТО:</div><div class="val">${correct}</div>`;
+  } else {
+    stats.streak = 0;
+    rxFeedback.className = 'feedback bad show';
+    rxFeedback.innerHTML = `<div>✗ <b>ОШИБКА</b></div>
+      <div class="label">ТЫ ПРИНЯЛ:</div><div class="val" style="color:#f88;">${user || '(пусто)'}</div>
+      <div class="label">ПРАВИЛЬНО:</div><div class="val" style="color:#8f8;">${correct}</div>`;
+  }
+  renderMorseInto(rxMorseEl, textToMorse(correct));
+  updateStats();
+  answerEl.disabled = true; checkBtn.disabled = true; rxRevealBtn.disabled = true;
+  setTimeout(() => {
+    rxStartBtn.disabled = false;
+    rxStartBtn.textContent = '▶ НОВОЕ';
+  }, 500);
+}
+
+rxStartBtn.addEventListener('click', rxStart);
+rxRepeatBtn.addEventListener('click', () => { if (rxTarget && !rxAnswered) rxTransmit(); });
+rxStopBtn.addEventListener('click', () => {
+  stopTransmission();
+  rxStopBtn.disabled = true; rxRepeatBtn.disabled = false; rxStartBtn.disabled = false;
+});
+rxRevealBtn.addEventListener('click', () => {
+  if (rxAnswered) return;
+  answerEl.value = '';
+  rxAnswered = false;
+  checkAnswer();
+});
+checkBtn.addEventListener('click', checkAnswer);
+answerEl.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !checkBtn.disabled) checkAnswer();
+});
+
+generateMessage();
+</script>
+</body>
+</html>
